@@ -13,11 +13,11 @@
 import UIKit
 import OrderedCollections
 
-// MARK: - UIMenuBuilder result builder
+// MARK: - BUIMenuBuilder result builder
 
 @available(iOS 16.0, *)
 @resultBuilder
-public struct UIMenuBuilder {
+public enum BUIMenuBuilder {
     /// Build a single `UIMenu` from one or more ``BetterMenus/MenuBuilderElement`` components.
     ///
     /// This function walks the provided components, treating ``BetterMenus/Divider`` specially as a
@@ -125,8 +125,8 @@ extension UIMenu {
     /// Convert a runtime `UIMenu` into the builders' internal `UIMenuInfo` representation.
     ///
     /// This is useful for reusing or composing existing menus within the builder pipeline.
-    var uiMenuInfo: UIMenuBuilder.UIMenuInfo {
-        return UIMenuBuilder.UIMenuInfo(title: title, subtitle: subtitle, image: image, identifier: identifier, options: options, preferredElementSize: preferredElementSize, children: children)
+    var uiMenuInfo: BUIMenuBuilder.UIMenuInfo {
+        return BUIMenuBuilder.UIMenuInfo(title: title, subtitle: subtitle, image: image, identifier: identifier, options: options, preferredElementSize: preferredElementSize, children: children)
     }
 }
 
@@ -198,11 +198,13 @@ public struct CustomView: MenuBuilderElement {
 @available(iOS 16.0, *)
 public struct Divider: MenuBuilderElement {
     public var uiKitEquivalent: UIMenu { UIMenu(title: "", image: .init(systemName: "cube"), options: .displayInline) } // arbitrary image otherwise it won't show the divider
+    
+    public init() {}
 }
 
 // MARK: - Menu (group)
 
-/// This is the primary grouping type. A ``BetterMenus/Menu`` creates titled submenus and to host nested `@UIMenuBuilder` content.
+/// This is the primary grouping type. A ``BetterMenus/Menu`` creates titled submenus and to host nested `@BUIMenuBuilder` content.
 ///
 /// Example - titled submenu:
 /// ```swift
@@ -235,8 +237,8 @@ public struct Menu: MenuBuilderElement {
     /// Preferred element size for children.
     public let preferredElementSize: UIMenu.ElementSize
     
-    /// The body closure producing nested menu content. Annotated with ``BetterMenus/UIMenuBuilder``.
-    @UIMenuBuilder public let body: () -> UIMenu
+    /// The body closure producing nested menu content. Annotated with ``BetterMenus/BUIMenuBuilder``.
+    @BUIMenuBuilder public let body: () -> UIMenu
     
     /// Create a new `BetterMenus/Menu` node.
     ///
@@ -247,8 +249,8 @@ public struct Menu: MenuBuilderElement {
     ///   - identifier: Optional identifier.
     ///   - options: Menu options.
     ///   - preferredElementSize: Preferred element size for children.
-    ///   - body: A `@UIMenuBuilder` closure that constructs the menu's children.
-    public init(_ title: String = "", subtitle: String? = nil, image: UIImage? = nil, identifier: UIMenu.Identifier? = nil, options: UIMenu.Options = [], preferredElementSize: UIMenu.ElementSize = { if #available(iOS 17.0, tvOS 17.0, watchOS 10.0, *) { .automatic } else { .large } }(), @UIMenuBuilder body: @escaping () -> UIMenu) {
+    ///   - body: A `@BUIMenuBuilder` closure that constructs the menu's children.
+    public init(_ title: String = "", subtitle: String? = nil, image: UIImage? = nil, identifier: UIMenu.Identifier? = nil, options: UIMenu.Options = [], preferredElementSize: UIMenu.ElementSize = { if #available(iOS 17.0, tvOS 17.0, watchOS 10.0, *) { .automatic } else { .large } }(), @BUIMenuBuilder body: @escaping () -> UIMenu) {
         self.title = title
         self.subtitle = subtitle
         self.image = image
@@ -430,10 +432,10 @@ public struct ForEach<T>: MenuBuilderElement {
     public let elements: [T]
     
     /// The mapping closure that builds a `UIMenu` for each element.
-    @UIMenuBuilder public let body: (T) -> UIMenu
+    @BUIMenuBuilder public let body: (T) -> UIMenu
     
     /// Create a ``BetterMenus/ForEach`` that maps `elements` using `body`.
-    public init(_ elements: [T], @UIMenuBuilder body: @escaping (T) -> UIMenu) {
+    public init(_ elements: [T], @BUIMenuBuilder body: @escaping (T) -> UIMenu) {
         self.elements = elements
         self.body = body
     }
@@ -552,9 +554,9 @@ public struct Picker<SelectionValue>: MenuBuilderElement where SelectionValue: H
     
     public let currentValue: SelectionValue
     public let didSelect: (SelectionValue) -> Void
-    @UIMenuBuilder public let body: () -> UIMenu
+    @BUIMenuBuilder public let body: () -> UIMenu
     
-    init(currentValue: SelectionValue, didSelect: @escaping (SelectionValue) -> Void, @UIMenuBuilder body: @escaping () -> UIMenu) {
+    init(currentValue: SelectionValue, didSelect: @escaping (SelectionValue) -> Void, @BUIMenuBuilder body: @escaping () -> UIMenu) {
         self.currentValue = currentValue
         self.didSelect = didSelect
         self.body = body
@@ -583,10 +585,10 @@ public struct Section: MenuBuilderElement {
     public let title: String
     
     /// The body closure producing the content of the section.
-    @UIMenuBuilder public let body: () -> UIMenu
+    @BUIMenuBuilder public let body: () -> UIMenu
     
     /// Create a new `Section`.
-    public init(_ title: String = "", @UIMenuBuilder body: @escaping () -> UIMenu) {
+    public init(_ title: String = "", @BUIMenuBuilder body: @escaping () -> UIMenu) {
         self.title = title
         self.body = body
     }
@@ -612,10 +614,10 @@ public struct ControlGroup: MenuBuilderElement {
     }
     
     /// A builder closure that returns the controls to include in the group.
-    @UIMenuBuilder public let controls: () -> UIMenu
+    @BUIMenuBuilder public let controls: () -> UIMenu
     
     /// Create a control group from the provided `controls` closure.
-    public init(@UIMenuBuilder controls: @escaping () -> UIMenu) {
+    public init(@BUIMenuBuilder controls: @escaping () -> UIMenu) {
         self.controls = controls
     }
 }
@@ -650,7 +652,9 @@ public struct Async<Result>: MenuBuilderElement {
         let completionHandler: (@escaping ([UIMenuElement]) -> Void) -> Void = { completion in
             Task {
                 let result = await asyncFetch()
-                await completion(body(result).children)
+                DispatchQueue.main.async {
+                    completion(body(result).children)
+                }
             }
         }
                 
@@ -703,7 +707,7 @@ public struct Async<Result>: MenuBuilderElement {
     public let asyncFetch: () async -> Result
 
     /// A builder closure that maps the fetched `Result` into a `UIMenu`.
-    @UIMenuBuilder public let body: (Result) -> UIMenu
+    @BUIMenuBuilder public let body: (Result) -> UIMenu
     
     /// Create an `Async` deferred menu element.
     ///
@@ -712,7 +716,7 @@ public struct Async<Result>: MenuBuilderElement {
     ///   - identifier: Optional cache key.
     ///   - asyncFetch: The asynchronous fetch closure.
     ///   - body: Builder that returns a `UIMenu` given the fetch result.
-    public init(cached: Bool = false, identifier: AnyHashable? = nil, _ asyncFetch: @escaping () async -> Result, @UIMenuBuilder body: @escaping (Result) -> UIMenu) {
+    public init(cached: Bool = false, identifier: AnyHashable? = nil, _ asyncFetch: @escaping () async -> Result, @BUIMenuBuilder body: @escaping (Result) -> UIMenu) {
         self.cached = cached
         self.identifier = identifier
         self.asyncFetch = asyncFetch
@@ -725,11 +729,15 @@ public struct Async<Result>: MenuBuilderElement {
 @available(iOS 16.0, *)
 public class BetterContextMenuInteraction: UIContextMenuInteraction {
     /// Delegate that returns a dynamically-updatable menu. Subclass it to have more customizability.
-    public class Delegate: NSObject, UIContextMenuInteractionDelegate {
-        /// The current menu to present.
+    public class Delegate: NSObject, BetterUIContextMenuInteractionDelegate {
         public var currentMenu: UIMenu
         
-        public var previewProvider: UIContextMenuContentPreviewProvider? = nil
+        public var previewProvider: UIContextMenuContentPreviewProvider?
+        
+        public init(currentMenu: UIMenu, previewProvider: UIContextMenuContentPreviewProvider?) {
+            self.currentMenu = currentMenu
+            self.previewProvider = previewProvider
+        }
         
         public func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
             return UIContextMenuConfiguration(identifier: nil,
@@ -738,11 +746,6 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
                 // Provide the actual menu shown for actions
                 return self?.currentMenu
             })
-        }
-        
-        public init(currentMenu: UIMenu, previewProvider: UIContextMenuContentPreviewProvider?) {
-            self.currentMenu = currentMenu
-            self.previewProvider = previewProvider
         }
     }
     
@@ -763,7 +766,7 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
         }
     }
     
-    private var _delegate: Delegate
+    private var _delegate: BetterUIContextMenuInteractionDelegate
         
     /// Update the currently visible menu by calling the `body` builder and replacing the menu.
     ///
@@ -776,16 +779,9 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
         })
     }
     
-    /// A method to change the delegate of the interaction. Note that the currentMenu and the preview provider of the delegate will be overwritten by the one from the interaction.
-    public func setDelegate(_ delegate: Delegate) {
-        delegate.currentMenu = currentMenu
-        delegate.previewProvider = previewProvider
-        self._delegate = delegate
-    }
-    
-    /// Create a context menu interaction backed by a `@UIMenuBuilder` body that can be reloaded.
+    /// Create a context menu interaction backed by a `@BUIMenuBuilder` body that can be reloaded.
     ///
-    /// - Parameter body: A `@UIMenuBuilder` closure returning the menu to display.
+    /// - Parameter body: A `@BUIMenuBuilder` closure returning the menu to display.
     /// - Parameter previewProvider: a preview provider for the delegate
     /// - Parameter delegate: an optional delegate
     ///
@@ -799,7 +795,7 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
     /// }
     /// view.addInteraction(interaction)
     /// ```
-    public init(@UIMenuBuilder body: @escaping () -> UIMenu, previewProvider: UIContextMenuContentPreviewProvider? = nil, delegate: Delegate? = nil) {
+    public init(@BUIMenuBuilder body: @escaping () -> UIMenu, previewProvider: UIContextMenuContentPreviewProvider? = nil, delegate: BetterUIContextMenuInteractionDelegate? = nil) {
         self.body = body
         self.previewProvider = previewProvider
         self.currentMenu = body()
@@ -818,4 +814,15 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
         self._delegate = Delegate(currentMenu: currentMenu, previewProvider: nil)
         super.init(delegate: delegate)
     }
+}
+
+/// Delegate protocol that returns a dynamically-updatable menu.
+///
+/// See the implementation of ``BetterMenus/BetterContextMenuInteraction/Delegate`` to get more details.
+public protocol BetterUIContextMenuInteractionDelegate: UIContextMenuInteractionDelegate {
+    var currentMenu: UIMenu { get set }
+    
+    var previewProvider: UIContextMenuContentPreviewProvider? { get set }
+        
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration?
 }

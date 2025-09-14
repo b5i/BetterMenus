@@ -29,7 +29,6 @@ let package = Package(
             dependencies: [
                 .product(name: "OrderedCollections", package: "swift-collections")
             ]
-        ),
-
+        )
     ]
 )

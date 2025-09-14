@@ -7,9 +7,9 @@ Designed for UIKit apps (iOS 16.0+) - compose menus declaratively, add async/def
 
 ## Highlights
 
-  * Declarative `@UIMenuBuilder` DSL for building `UIMenu` trees.
+  * Declarative `@BUIMenuBuilder` DSL for building `UIMenu` trees.
   * Swift-friendly types: `Menu`, `Button`, `Toggle`, `Text`, `Section`, `ControlGroup`, `Stepper`, `ForEach`, `Divider`, etc.
-  * **Full Composability**: Build complex menus by calling other `@UIMenuBuilder` functions.
+  * **Full Composability**: Build complex menus by calling other `@BUIMenuBuilder` functions.
   * **Conditional Logic**: Use standard Swift control flow (`if-else`, `switch`) to conditionally include elements.
   * **Direct UIKit Integration**: Seamlessly mix with standard `UIMenu` and `UIAction` elements in your builder closures.
   * `Async` (deferred) menu elements with an optional, configurable cache.
@@ -51,7 +51,7 @@ import BetterMenus
 ### 1 - Build a simple menu
 
 ```swift
-@UIMenuBuilder
+@BUIMenuBuilder
 func makeMenu() -> UIMenu {
     Menu("Edit") {
         Button("Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
@@ -64,12 +64,12 @@ func makeMenu() -> UIMenu {
 }
 ```
 
-The `UIMenuBuilder` produces a `UIMenu` you can assign directly to `UIButton.menu`, return from a `UIContextMenuInteraction` provider, or present in other UIKit APIs that accept `UIMenu`.
+The `BUIMenuBuilder` produces a `UIMenu` you can assign directly to `UIButton.menu`, return from a `UIContextMenuInteraction` provider, or present in other UIKit APIs that accept `UIMenu`.
 
 ### 2 - Inline items and dividers
 
 ```swift
-@UIMenuBuilder
+@BUIMenuBuilder
 func inlineMenu() -> UIMenu {
     Text("Read-only text row")
     Divider()          // creates an inline separator group
@@ -87,7 +87,7 @@ func makeNativeSubmenu() -> UIMenu {
     return UIMenu(title: "Native Submenu", children: [subAction])
 }
 
-@UIMenuBuilder
+@BUIMenuBuilder
 func mixedMenu() -> UIMenu {
     Button("BetterMenus Button") { _ in /* ... */ }
     makeNativeSubmenu() // Include a UIMenu directly
@@ -96,12 +96,12 @@ func mixedMenu() -> UIMenu {
 
 ### 4 - Compose functions and use conditional logic
 
-Call other `@UIMenuBuilder` functions and use `if-else` to build your menu dynamically.
+Call other `@BUIMenuBuilder` functions and use `if-else` to build your menu dynamically.
 
 ```swift
 var someCondition = true
 
-@UIMenuBuilder
+@BUIMenuBuilder
 func featureMenu() -> UIMenu {
     if someCondition {
         Text("Feature is ON")
@@ -110,7 +110,7 @@ func featureMenu() -> UIMenu {
     }
 }
 
-@UIMenuBuilder
+@BUIMenuBuilder
 func masterMenu() -> UIMenu {
     // Call another builder function to compose menus
     featureMenu()
@@ -126,7 +126,7 @@ func masterMenu() -> UIMenu {
 ```swift
 var isOn: Toggle.ToggleState = .off
 
-@UIMenuBuilder
+@BUIMenuBuilder
 func toggleMenu() -> UIMenu {
     Toggle("Enable feature", style: [.keepsMenuPresented], state: isOn) { _, newValue in
         // Update your model
@@ -201,7 +201,7 @@ When `cached == true` and an `identifier` is provided, the result is stored in a
 
 ## BetterContextMenuInteraction
 
-`BetterContextMenuInteraction` is a convenience wrapper around `UIContextMenuInteraction` that accepts a `@UIMenuBuilder` body and supports dynamic menu reloading.
+`BetterContextMenuInteraction` is a convenience wrapper around `UIContextMenuInteraction` that accepts a `@BUIMenuBuilder` body and supports dynamic menu reloading.
 
 It uses a public, nested `Delegate` class (`BetterContextMenuInteraction.Delegate`) to manage the menu presentation. While you can provide a `previewProvider` directly in the initializer for most cases, you can also subclass the delegate to gain more advanced control over the `UIContextMenuConfiguration` and other delegate behaviors.
 
@@ -229,7 +229,7 @@ func setupView() {
     // Store `ctx` to call `ctx.reloadMenu()` when underlying state changes.
 }
 
-@UIMenuBuilder
+@BUIMenuBuilder
 func makeMenu() -> UIMenu {
     // ... your menu definition
 }
@@ -239,7 +239,7 @@ func makeMenu() -> UIMenu {
 
 ```swift
 public init(
-    @UIMenuBuilder body: @escaping () -> UIMenu,
+    @BUIMenuBuilder body: @escaping () -> UIMenu,
     previewProvider: UIContextMenuContentPreviewProvider? = nil,
     delegate: Delegate? = nil
 )
@@ -247,16 +247,29 @@ public init(
 
 ### Customizing the Delegate
 
-For advanced behaviors beyond providing a menu and a preview (e.g., custom animations), you can subclass `BetterContextMenuInteraction.Delegate` and override its methods. You can then pass an instance of your custom delegate during initialization or by using the `setDelegate(_:)` method.
+For advanced behaviors beyond providing a menu and a preview (e.g., custom animations), you can subclass `BetterContextMenuInteraction.Delegate` and override its methods. You can then pass an instance of your custom delegate during initialization.
 
 ```swift
-class CustomDelegate: BetterContextMenuInteraction.Delegate {
-    override func contextMenuInteraction(
+class CustomDelegate: NSObject, BetterUIContextMenuInteractionDelegate {
+    var currentMenu: UIMenu
+    
+    var previewProvider: UIContextMenuContentPreviewProvider?
+    
+    func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration,
         animator: UIContextMenuInteractionCommitAnimating
     ) {
         print("Preview action committed!")
+    }
+    
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        return UIContextMenuConfiguration(actionProvider: { [weak self] _ in self?.currentMenu })
+    }
+    
+    init(currentMenu: UIMenu, previewProvider: UIContextMenuContentPreviewProvider? = nil) {
+        self.currentMenu = currentMenu
+        self.previewProvider = previewProvider
     }
 }
 
@@ -265,7 +278,7 @@ let delegate = CustomDelegate(
     previewProvider: nil
 )
 
-myInteraction.setDelegate(delegate)
+let myInteraction = BetterContextMenuInteraction(body: makeMenu, delegate: delegate)
 ```
 
 -----
@@ -274,11 +287,11 @@ myInteraction.setDelegate(delegate)
 
 > All types require iOS 16.0+
 
-  * `@resultBuilder public struct UIMenuBuilder`
+  * `@resultBuilder public struct BUIMenuBuilder`
     Build a `UIMenu` from declarative elements.
   * `protocol MenuBuilderElement`
     Conformance bridge to `UIMenuElement`. **`UIMenu` and `UIAction` conform by default**, so you can use them directly in the builder.
-  * `struct Menu`: A grouped `UIMenu` node with a `@UIMenuBuilder` body.
+  * `struct Menu`: A grouped `UIMenu` node with a `@BUIMenuBuilder` body.
   * `struct Button`: Builds a `UIAction`.
   * `struct Toggle`: Builds a stateful `UIAction` (on/off).
   * `struct ForEach<T>`: Maps collections to menu children.
@@ -313,7 +326,7 @@ final class MyViewController: UIViewController {
         button.addInteraction(ctx!)
     }
 
-    @UIMenuBuilder
+    @BUIMenuBuilder
     func makeMenu() -> UIMenu {
         Toggle("Enable", state: isEnabled) { _, _ in
             self.isEnabled = self.isEnabled.opposite
