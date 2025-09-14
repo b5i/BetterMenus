@@ -1,7 +1,7 @@
 # BetterMenus
 
 A lightweight Swift helper to build `UIMenu` and `UIMenuElement` hierarchies with a SwiftUI-like DSL using a `@resultBuilder`.
-Designed for UIKit apps (iOS 16.0+) - compose menus declaratively, add async/deferred items, and wire context menus that can be reloaded at runtime.
+Designed for UIKit apps (iOS 16.0+) - compose menus declaratively, add async/deferred items, and wire context menus that can be reloaded at runtime. All of that in a single file for easy integration.
 
 -----
 
@@ -35,6 +35,8 @@ dependencies: [
     .package(url: "https://github.com/b5i/BetterMenus.git", from: "1.0.0")
 ]
 ```
+
+or put the single file `Sources/BetterMenus/BetterMenus.swift` directly in your project.
 
 Then import:
 
