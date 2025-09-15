@@ -149,6 +149,69 @@ extension UIMenuElement: MenuBuilderElement {
     public var uiKitEquivalent: UIMenuElement { self }
 }
 
+/// A protocol defining the minimum states of a state type.
+public protocol UIActionBackedMenuBuilderElementState {
+    static var on: Self { get }
+    static var off: Self { get }
+}
+
+extension UIMenuElement.State: UIActionBackedMenuBuilderElementState {}
+
+/// A protocol providing useful methods to customize an element whose UIKit type is a UIAction.
+public protocol UIActionBackedMenuBuilderElement: MenuBuilderElement where MenuElementType: UIAction {
+    associatedtype StateType: UIActionBackedMenuBuilderElementState
+    
+    /// Optional identifier for the action, can be set using ``UIActionBackedMenuBuilderElement/identifier(_:)-6auaj``.
+    var identifier: UIAction.Identifier? { get set }
+    
+    /// An optional discoverability title used by assistive features, can be set using ``UIActionBackedMenuBuilderElement/discoverabilityTitle(_:)-7qrbe``.
+    var discoverabilityTitle: String? { get set }
+    
+    /// Attributes such as `.destructive` or `.disabled`, can be set using ``UIActionBackedMenuBuilderElement/style(_:)-rtxf``.
+    var style: UIMenuElement.Attributes { get set }
+    
+    /// The on/off state for actions that represent a stateful element, can be set using ``UIActionBackedMenuBuilderElement/state(_:)-12gq6``.
+    var state: StateType { get set }
+    
+    /// Sets an identifier for the action.
+    func identifier(_ identifier: UIAction.Identifier?) -> Self
+    
+    /// Sets a discoverability title used by assistive features.
+    func discoverabilityTitle(_ discoverabilityTitle: String?) -> Self
+    
+    /// Sets attributes such as `.destructive` or `.disabled`.
+    func style(_ style: UIMenuElement.Attributes) -> Self
+    
+    /// Sets the on/off state for actions that represent a stateful element.
+    func state(_ state: StateType) -> Self
+}
+
+public extension UIActionBackedMenuBuilderElement {
+    func identifier(_ identifier: UIAction.Identifier?) -> Self {
+        var copy = self
+        copy.identifier = identifier
+        return copy
+    }
+    
+    func discoverabilityTitle(_ discoverabilityTitle: String?) -> Self {
+        var copy = self
+        copy.discoverabilityTitle = discoverabilityTitle
+        return copy
+    }
+    
+    func style(_ style: UIMenuElement.Attributes) -> Self {
+        var copy = self
+        copy.style = style
+        return copy
+    }
+    
+    func state(_ state: StateType) -> Self {
+        var copy = self
+        copy.state = state
+        return copy
+    }
+}
+
 /*
 
 @available(iOS 16.0, *)
@@ -272,8 +335,8 @@ public struct Menu: MenuBuilderElement {
 /// }
 /// ```
 @available(iOS 16.0, *)
-public struct Button: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+public struct Button: UIActionBackedMenuBuilderElement {
+    public var uiKitEquivalent: UIAction {
         UIAction(title: title, image: image, identifier: identifier, discoverabilityTitle: discoverabilityTitle, attributes: style, state: state, handler: handler)
     }
     
@@ -283,29 +346,25 @@ public struct Button: MenuBuilderElement {
     /// Optional icon for the action.
     public let image: UIImage?
     
-    /// Optional identifier for the action.
-    public let identifier: UIAction.Identifier?
+    /// Optional identifier for the action, can be set using ``UIActionBackedMenuBuilderElement/identifier(_:)-6auaj``.
+    public var identifier: UIAction.Identifier? = nil
     
-    /// An optional discoverability title used by assistive features.
-    public let discoverabilityTitle: String?
+    /// An optional discoverability title used by assistive features, can be set using ``UIActionBackedMenuBuilderElement/discoverabilityTitle(_:)-7qrbe``.
+    public var discoverabilityTitle: String? = nil
     
-    /// Attributes such as `.destructive` or `.disabled`.
-    public let style: UIMenuElement.Attributes
+    /// Attributes such as `.destructive` or `.disabled`, can be set using ``UIActionBackedMenuBuilderElement/style(_:)-rtxf``.
+    public var style: UIMenuElement.Attributes = []
     
-    /// The on/off state for actions that represent a stateful element.
-    public let state: UIMenuElement.State
+    /// The on/off state for actions that represent a stateful element, can be set using ``UIActionBackedMenuBuilderElement/state(_:)-12gq6``.
+    public var state: UIMenuElement.State = .off
     
     /// Handler invoked when the action is selected.
     public let handler: (UIAction) -> Void
     
     /// Create a ``BetterMenus/Button``.
-    public init(_ title: String = "", image: UIImage? = nil, identifier: UIAction.Identifier? = nil, discoverabilityTitle: String? = nil, style: UIMenuElement.Attributes = [], state: UIMenuElement.State = .off, _ handler: @escaping (UIAction) -> Void) {
+    public init(_ title: String = "", image: UIImage? = nil, _ handler: @escaping (UIAction) -> Void) {
         self.title = title
         self.image = image
-        self.identifier = identifier
-        self.discoverabilityTitle = discoverabilityTitle
-        self.style = style
-        self.state = state
         self.handler = handler
     }
 }
@@ -326,9 +385,9 @@ public struct Button: MenuBuilderElement {
 /// }
 /// ```
 @available(iOS 16.0, *)
-public struct Toggle: MenuBuilderElement {
+public struct Toggle: UIActionBackedMenuBuilderElement {
     /// Convert the builder `Toggle` into a `UIAction` with a handler that provides the new value.
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIAction {
         UIAction(title: title, image: image, identifier: identifier, discoverabilityTitle: discoverabilityTitle, attributes: style, state: state.uiMenuElementState, handler: { action in
             handler(action, !state.boolValue)
         })
@@ -340,34 +399,31 @@ public struct Toggle: MenuBuilderElement {
     /// Optional icon for the toggle.
     public let image: UIImage?
     
-    /// Optional identifier.
-    public let identifier: UIAction.Identifier?
+    /// Optional identifier for the action, can be set using ``UIActionBackedMenuBuilderElement/identifier(_:)-6auaj``.
+    public var identifier: UIAction.Identifier? = nil
     
-    /// Optional discoverability title.
-    public let discoverabilityTitle: String?
+    /// An optional discoverability title used by assistive features, can be set using ``UIActionBackedMenuBuilderElement/discoverabilityTitle(_:)-7qrbe``.
+    public var discoverabilityTitle: String? = nil
     
-    /// Attributes such as `.keepsMenuPresented`.
-    public let style: UIMenuElement.Attributes
+    /// Attributes such as `.destructive` or `.disabled`, can be set using ``UIActionBackedMenuBuilderElement/style(_:)-rtxf``.
+    public var style: UIMenuElement.Attributes = []
     
-    /// Current toggle state.
-    public let state: ToggleState
+    /// The on/off state for actions that represent a stateful element, can be set using ``UIActionBackedMenuBuilderElement/state(_:)-12gq6``.
+    public var state: ToggleState = .off
     
     /// Handler called when the toggle is activated; provides the new boolean value.
     public let handler: (UIAction, _ newValue: Bool) -> Void
     
     /// Creates a Toggle.
-    public init(_ title: String = "", image: UIImage? = nil, identifier: UIAction.Identifier? = nil, discoverabilityTitle: String? = nil, style: UIMenuElement.Attributes = [], state: ToggleState = .off, _ handler: @escaping (UIAction, _ newValue: Bool) -> Void) {
+    public init(_ title: String = "", image: UIImage? = nil, state: ToggleState = .off, _ handler: @escaping (UIAction, _ newValue: Bool) -> Void) {
         self.title = title
         self.image = image
-        self.identifier = identifier
-        self.discoverabilityTitle = discoverabilityTitle
-        self.style = style
         self.state = state
         self.handler = handler
     }
     
     // MARK: ToggleState
-    public enum ToggleState {
+    public enum ToggleState: UIActionBackedMenuBuilderElementState {
         case on, off
         
         /// Convert to `UIMenuElement.State` used by `UIAction`.
@@ -452,9 +508,9 @@ public struct ForEach<T>: MenuBuilderElement {
 /// Text("No recent files", image: UIImage(systemName: "doc"))
 /// ```
 @available(iOS 16.0, *)
-public struct Text: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
-        UIAction(title: text, image: image, handler: {_ in})
+public struct Text: UIActionBackedMenuBuilderElement {
+    public var uiKitEquivalent: UIAction {
+        UIAction(title: text, image: image, identifier: identifier, discoverabilityTitle: discoverabilityTitle, attributes: style, state: state, handler: {_ in})
     }
     
     /// The displayed text.
@@ -463,23 +519,26 @@ public struct Text: MenuBuilderElement {
     /// Optional image for the text row.
     public let image: UIImage?
     
+    /// Optional identifier for the action, can be set using ``UIActionBackedMenuBuilderElement/identifier(_:)-6auaj``.
+    public var identifier: UIAction.Identifier? = nil
+    
+    /// An optional discoverability title used by assistive features, can be set using ``UIActionBackedMenuBuilderElement/discoverabilityTitle(_:)-7qrbe``.
+    public var discoverabilityTitle: String? = nil
+    
+    /// Attributes such as `.destructive` or `.disabled`, can be set using ``UIActionBackedMenuBuilderElement/style(_:)-rtxf``.
+    public var style: UIMenuElement.Attributes = [.keepsMenuPresented]
+    
+    /// The on/off state for actions that represent a stateful element, can be set using ``UIActionBackedMenuBuilderElement/state(_:)-12gq6``.
+    public var state: UIMenuElement.State = .off
+    
     /// An optional tag that can be used by consumers for selection or identification.
     // public var tag: (any Hashable)? will be used by the picker
     
     /// Create a text-only menu element.
-    public init(_ text: String, image: UIImage? = nil, /* tag: (any Hashable)? = nil */ ) {
+    public init(_ text: String, image: UIImage? = nil) {
         self.text = text
         self.image = image
-        //self.tag = tag
     }
-    
-    /// Attach a tag to the ``BetterMenus/Text`` element and return the updated value.
-    /*
-    public mutating func tag(_ value: any Hashable) -> Text {
-        self.tag = value
-        return self
-    }
-     */
 }
 
 // MARK: - Stepper
@@ -498,12 +557,14 @@ public struct Stepper<T>: MenuBuilderElement where T: Strideable {
     public var uiKitEquivalent: UIMenuElement {
         let processedBody = body(value)
         return Menu(processedBody.text, image: processedBody.image, options: [.displayInline], preferredElementSize: .small) {
-            Button(image: UIImage(systemName: "minus"), style: closeMenuOnTap ? [] : [.keepsMenuPresented]) { _ in
+            Button(image: UIImage(systemName: "minus")) { _ in
                 decrementButtonPressed(value)
             }
-            Button(image: UIImage(systemName: "plus"), style: closeMenuOnTap ? [] : [.keepsMenuPresented]) { _ in
+            .style(closeMenuOnTap ? [] : [.keepsMenuPresented])
+            Button(image: UIImage(systemName: "plus")) { _ in
                 incrementButtonPressed(value)
             }
+            .style(closeMenuOnTap ? [] : [.keepsMenuPresented])
         }.uiKitEquivalent
     }
     
@@ -697,11 +758,11 @@ public struct Async<Result>: MenuBuilderElement {
         return AsyncStorage.AsyncCache.removeAll(where: condition)
     }
     
-    /// When true use an internal cache for deferred elements (when `identifier` is set).
-    public let cached: Bool
+    /// When true use an internal cache for deferred elements (when ``identifier`` is set).
+    public var cached: Bool = false
     
-    /// Optional key used to cache the deferred menu element, beware that the
-    public let identifier: AnyHashable?
+    /// Optional key used to cache the deferred menu element, beware that the element will be stored in the cache and no limit to it is set by default, see ``Async/asyncCacheMaxSize``.
+    public var identifier: AnyHashable? = nil
 
     /// The asynchronous fetching closure that returns a `Result` used by `body` to build children.
     public let asyncFetch: () async -> Result
@@ -716,11 +777,23 @@ public struct Async<Result>: MenuBuilderElement {
     ///   - identifier: Optional cache key.
     ///   - asyncFetch: The asynchronous fetch closure.
     ///   - body: Builder that returns a `UIMenu` given the fetch result.
-    public init(cached: Bool = false, identifier: AnyHashable? = nil, _ asyncFetch: @escaping () async -> Result, @BUIMenuBuilder body: @escaping (Result) -> UIMenu) {
-        self.cached = cached
-        self.identifier = identifier
+    public init(_ asyncFetch: @escaping () async -> Result, @BUIMenuBuilder body: @escaping (Result) -> UIMenu) {
         self.asyncFetch = asyncFetch
         self.body = body
+    }
+    
+    /// Sets a boolean that, when true, use an internal cache for deferred elements (when ``identifier`` is set).
+    public func cached(_ cached: Bool) -> Self {
+        var copy = self
+        copy.cached = cached
+        return copy
+    }
+    
+    /// Sets an key used to cache the deferred menu element.
+    public func identifier(_ identifier: AnyHashable) -> Self {
+        var copy = self
+        copy.identifier = identifier
+        return copy
     }
 }
 

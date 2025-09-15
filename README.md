@@ -130,10 +130,11 @@ var isOn: Toggle.ToggleState = .off
 
 @BUIMenuBuilder
 func toggleMenu() -> UIMenu {
-    Toggle("Enable feature", style: [.keepsMenuPresented], state: isOn) { _, newValue in
+    Toggle("Enable feature", state: isOn) { _, newValue in
         // Update your model
         isOn = isOn.opposite
     }
+    .style([.keepsMenuPresented])
 }
 ```
 
@@ -164,7 +165,7 @@ Stepper(value: count, closeMenuOnTap: false,
 Create `UIDeferredMenuElement`-backed items that fetch content asynchronously.
 
 ```swift
-Async(cached: true, identifier: "user-list") {
+Async {
     // This closure runs in an async context
     try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
     return ["Alice", "Bob", "Eve"]
@@ -176,6 +177,8 @@ Async(cached: true, identifier: "user-list") {
         }
     }
 }
+.cached(true)
+.identifier("user-list")
 ```
 
 #### Managing the Async Cache

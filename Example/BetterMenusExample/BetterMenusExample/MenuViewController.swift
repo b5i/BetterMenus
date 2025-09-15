@@ -106,12 +106,14 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
     }
     
     @BUIMenuBuilder private func toggleMenu() -> UIMenu {
-        Toggle("Enable", style: [.keepsMenuPresented], state: toggleState) { _, newValue in
+        Toggle("Enable", state: toggleState) { _, newValue in
             self.toggleState = self.toggleState.opposite
         }
-        Toggle("Enable 2", style: [.keepsMenuPresented], state: toggleState2) { _, newValue in
+        .style([.keepsMenuPresented])
+        Toggle("Enable 2", state: toggleState2) { _, newValue in
             self.toggleState2 = self.toggleState2.opposite
         }
+        .style([.keepsMenuPresented])
     }
     
     @BUIMenuBuilder private func asyncMenu() -> UIMenu {
@@ -122,24 +124,32 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
             } body: { result in
                 Text(result)
             }
-            Async(cached: true, identifier: "1") { () -> String in
+            
+            Async { () -> String in
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
                 return "This is cached"
             } body: { result in
                 Text(result)
             }
-            Async(cached: true, identifier: 1) { () -> String in
+            .cached(true)
+            .identifier("1")
+            
+            Async { () -> String in
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
                 return "This is also cached"
             } body: { result in
                 Text(result)
             }
-            Async(cached: true) { () -> String in
+            .cached(true)
+            .identifier(1)
+            
+            Async { () -> String in
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
                 return "This is also cached but will regenerate"
             } body: { result in
                 Text(result)
             }
+            .cached(true)
         }
     }
     
