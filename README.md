@@ -363,3 +363,6 @@ Contributions, bug reports and feature requests are welcome. Open an issue or su
 
 **Author:** Antoine Bollengier - [github.com/b5i](https://github.com/b5i)
 License: MIT
+
+### Dependencies
+- Apple's [Swift Collections](https://github.com/apple/swift-collections) to make the cache for `Async` elements. Licensed with [Apache License 2.0](https://github.com/apple/swift-collections?tab=Apache-2.0-1-ov-file#readme).
