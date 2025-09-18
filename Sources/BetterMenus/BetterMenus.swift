@@ -24,9 +24,9 @@ public enum BUIMenuBuilder {
     /// delimiter that creates nested menus. It collects children into an internal
     /// `UIMenuInfo` structure, then composes the final `UIMenu` tree and returns the root menu.
     ///
-    /// - Parameter components: The variadic list of elements produced by the builder.
+    /// - Parameter components: The list of elements produced by the builder.
     /// - Returns: A constructed `UIMenu` representing the composed menu hierarchy.
-    public static func buildBlock(_ components: any MenuBuilderElement...) -> UIMenu {
+    public static func buildArray(_ components: [MenuBuilderElement]) -> UIMenu {
         let mainMenu: UIMenuInfo = UIMenuInfo(options: .displayInline)
         var grandParentsQueue: [UIMenuInfo] = []
         var currentParent: UIMenuInfo = mainMenu
@@ -52,6 +52,10 @@ public enum BUIMenuBuilder {
             grandParentToAdd = grandParent
         }
         return mainMenu.makeMenu()
+    }
+    
+    public static func buildBlock(_ components: any MenuBuilderElement...) -> UIMenu {
+        return Self.buildArray(components)
     }
     
     public static func buildEither(first component: any MenuBuilderElement) -> any MenuBuilderElement {
@@ -147,6 +151,12 @@ public protocol MenuBuilderElement {
 
 extension UIMenuElement: MenuBuilderElement {
     public var uiKitEquivalent: UIMenuElement { self }
+}
+
+extension Array: MenuBuilderElement where Element: MenuBuilderElement {
+    public var uiKitEquivalent: UIMenu {
+        return BUIMenuBuilder.buildArray(self)
+    }
 }
 
 /// A protocol defining the minimum states of a state type.
@@ -278,7 +288,7 @@ public struct Divider: MenuBuilderElement {
 /// ```
 @available(iOS 16.0, *)
 public struct Menu: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIMenu {
         UIMenu(title: title, subtitle: subtitle, image: image, identifier: identifier, options: options, preferredElementSize: preferredElementSize, children: body().children)
     }
     
@@ -475,7 +485,7 @@ public struct Toggle: UIActionBackedMenuBuilderElement {
 /// ```
 @available(iOS 16.0, *)
 public struct ForEach<T>: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIMenu {
         let children: [UIMenuElement] = self.elements.map(body).map(\.children).reduce([], {
             var copy = $0
             copy.append(contentsOf: $1)
@@ -554,7 +564,7 @@ public struct Text: UIActionBackedMenuBuilderElement {
 /// ```
 @available(iOS 16.0, *)
 public struct Stepper<T>: MenuBuilderElement where T: Strideable {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIMenu {
         let processedBody = body(value)
         return Menu(processedBody.text, image: processedBody.image, options: [.displayInline], preferredElementSize: .small) {
             Button(image: UIImage(systemName: "minus")) { _ in
@@ -638,7 +648,7 @@ public struct Picker<SelectionValue>: MenuBuilderElement where SelectionValue: H
 /// ```
 @available(iOS 16.0, *)
 public struct Section: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIMenu {
         UIMenu(title: title, options: .displayInline, children: body().children)
     }
     
@@ -670,7 +680,7 @@ public struct Section: MenuBuilderElement {
 /// ```
 @available(iOS 16.0, *)
 public struct ControlGroup: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIMenu {
         UIMenu(options: [.displayInline], preferredElementSize: .medium, children: controls().children)
     }
     
@@ -709,7 +719,7 @@ enum AsyncStorage {
 /// ```
 @available(iOS 16.0, *)
 public struct Async<Result>: MenuBuilderElement {
-    public var uiKitEquivalent: UIMenuElement {
+    public var uiKitEquivalent: UIDeferredMenuElement {
         let completionHandler: (@escaping ([UIMenuElement]) -> Void) -> Void = { completion in
             Task {
                 let result = await asyncFetch()

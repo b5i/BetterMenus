@@ -15,9 +15,11 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
         b.setTitle("Long-press or tap →", for: .normal)
         b.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         b.translatesAutoresizingMaskIntoConstraints = false
-        b.configuration = .bordered()
-        b.layer.cornerRadius = 10
-        b.layer.borderWidth = 1/UIScreen.main.scale
+        if #available(iOS 26.0, *) {
+            b.configuration = .prominentClearGlass()
+        } else {
+            b.configuration = .borderedProminent()
+        }
         return b
     }()
     
