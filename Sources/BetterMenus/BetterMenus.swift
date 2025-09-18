@@ -27,7 +27,7 @@ public enum BUIMenuBuilder {
     /// - Parameter components: The list of elements produced by the builder.
     /// - Returns: A constructed `UIMenu` representing the composed menu hierarchy.
     public static func buildArray(_ components: [MenuBuilderElement]) -> UIMenu {
-        let mainMenu: UIMenuInfo = UIMenuInfo(options: .displayInline)
+        let mainMenu: UIMenuInfo = UIMenuInfo(image: UIImage(systemName: "cube") ,options: .displayInline)
         var grandParentsQueue: [UIMenuInfo] = []
         var currentParent: UIMenuInfo = mainMenu
         for component in components {
