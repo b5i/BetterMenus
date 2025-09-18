@@ -3,6 +3,8 @@
 A lightweight Swift helper to build `UIMenu` and `UIMenuElement` hierarchies with a SwiftUI-like DSL using a `@resultBuilder`.
 Designed for UIKit apps (iOS 16.0+) - compose menus declaratively, add async/deferred items, and wire context menus that can be reloaded at runtime. All of that in a single file for easy integration.
 
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fb5i%2FBetterMenus%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/b5i/BetterMenus) [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fb5i%2FBetterMenus%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/b5i/BetterMenus)
+
 -----
 
 ## Highlights
