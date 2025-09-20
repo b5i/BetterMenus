@@ -104,11 +104,11 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
     }
     
     @BUIMenuBuilder private func toggleMenu() -> UIMenu {
-        Toggle("Enable", state: toggleState) { _, newValue in
+        Toggle("Enable", state: toggleState) { _, _ in
             self.toggleState = self.toggleState.opposite
         }
         .style([.keepsMenuPresented])
-        Toggle("Enable 2", state: toggleState2) { _, newValue in
+        Toggle("Enable 2", state: toggleState2) { _, _ in
             self.toggleState2 = self.toggleState2.opposite
         }
         .style([.keepsMenuPresented])
@@ -151,6 +151,67 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
         }
     }
     
+    @BUIMenuBuilder private func cachedAsyncMenu() -> UIMenu {
+        Section("Async stuff 2") {
+            Async { () -> String in
+                try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+                return "This is cached"
+            } body: { result in
+                {
+                    print("This body (1) is recalculated")
+                    return Text(result)
+                }()
+            }
+            .cached(true)
+            .identifier("cached async menu 1")
+            
+            Async { () -> String in
+                try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+                return "This is also cached but the body is recalculated"
+            } body: { result in
+                {
+                    print("This body (2) is recalculated")
+                    return Text(result)
+                }()
+            }
+            .cached(true)
+            .identifier("cached async menu 2")
+            .calculateBodyWithCache(true)
+        }
+    }
+    
+    @BUIMenuBuilder private func cachedAsyncBodyDemoMenu() -> UIMenu {
+        Menu("Async stuff 3") {
+            Async { () -> [String] in
+                print("This should only be executed once")
+                try? await Task.sleep(nanoseconds: 3 * 1_000_000_000)
+                return ["an element"]
+            } body: { elements in
+                Button("Add an element") { _ in
+                    let added = AsyncStorage.modifyCache(forIdentifier: "cachedAsyncBodyDemoMenu", { (elements: [String]) in
+                        var copy = elements
+                        copy.append("an element")
+                        return copy
+                    })
+                    if added {
+                        print("added new item successfully")
+                    } else {
+                        print("error while trying to add item")
+                    }
+                    self.buttonContextMenuInteraction?.reloadMenu(withIdentifier: "CachedAsyncBodyDemoMenu")
+                }
+                .style(.keepsMenuPresented)
+                ForEach(elements) { element in
+                    Text(element)
+                }
+            }
+            .cached(true)
+            .identifier("cachedAsyncBodyDemoMenu")
+            .calculateBodyWithCache(true)
+        }
+        .identifier("CachedAsyncBodyDemoMenu")
+    }
+    
     @BUIMenuBuilder private func makeMenu() -> UIMenu {
         /*
         CustomView {
@@ -167,6 +228,9 @@ final class MenuViewController: UIViewController, BetterUIContextMenuInteraction
         toggleMenu()
         Divider()
         asyncMenu()
+        cachedAsyncMenu()
+        cachedAsyncBodyDemoMenu()
+        Divider()
         Menu("Action") {
             Button("my button3", image: .init(systemName: "cube")) { _ in
                 print("button 3!")

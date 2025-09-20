@@ -25,16 +25,16 @@ Designed for UIKit apps (iOS 16.0+) - compose menus declaratively, add async/def
 
 Add the package to your project with Swift Package Manager:
 
-```swift
-// Xcode: File → Swift Packages → Add Package Dependency
-// Package URL: https://github.com/b5i/BetterMenus.git
+```
+Xcode: File → Swift Packages → Add Package Dependency
+Package URL: https://github.com/b5i/BetterMenus.git
 ```
 
 or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/b5i/BetterMenus.git", from: "1.0.0")
+    .package(url: "https://github.com/b5i/BetterMenus.git", from: "1.1.0")
 ]
 ```
 
@@ -132,7 +132,7 @@ var isOn: Toggle.ToggleState = .off
 
 @BUIMenuBuilder
 func toggleMenu() -> UIMenu {
-    Toggle("Enable feature", state: isOn) { _, newValue in
+    Toggle("Enable feature", state: isOn) { _, _ in
         // Update your model
         isOn = isOn.opposite
     }
@@ -179,26 +179,89 @@ Async {
         }
     }
 }
-.cached(true)
-.identifier("user-list")
 ```
 
-#### Managing the Async Cache
+
+
+## Caching Async Menu Elements
+
+BetterMenus provides caching for `Async` menu elements so you can avoid re-fetching data unnecessarily.
+There are two important tools in this system:
+
+### `calculateBodyWithCache`
+
+By default, an `Async` element caches the **final `UIDeferredMenuElement`** (the rendered menu).
+If you enable `.calculateBodyWithCache(true)`, the cache will instead store the **raw `Result`** produced by your `asyncFetch` closure.
+
+This allows the menu body to be recalculated later without re-running the async fetch. For example:
+
+```swift
+Async {
+    await fetchMenuData()
+} body: { data in
+    UIMenu(title: "Items", children: data.map(makeMenuItem))
+}
+.cached(true)
+.identifier("menu-cache")
+.calculateBodyWithCache(true)
+```
+
+* If `calculateBodyWithCache` is **false** (default):
+  The menu is cached as-is, and reused directly on refresh.
+* If `calculateBodyWithCache` is **true**:
+  The `fetchMenuData()` result is cached, and the `body` builder will be called again when the menu refreshes.
+
+⚠️ **Note:** Refreshing the menu is not automatic. You must call `reloadMenu()` explicitly on your `BetterContextMenuInteraction` (or a custom `UIContextMenuInteraction`) to trigger the rebuild.
+
+---
+
+### `AsyncStorage.modifyCache`
+
+Once a result is cached (via `calculateBodyWithCache`), you can modify it at runtime without refetching.
+
+```swift
+AsyncStorage.modifyCache(forIdentifier: "menu-cache") { (data: [Item]) in
+    var copy = data
+    copy.append(Item(name: "Injected item"))
+    return copy
+}
+```
+
+* The closure receives the cached value and return a value of type `T` (the same type your `asyncFetch` returns otherwise the modification will be rejected).
+* Returns `true` if the cache was successfully updated, otherwise `false`.
+
+This is useful for:
+
+* Injecting items into the menu without hitting the network again.
+* Adjusting cached data after a background update.
+* Fixing up cached state when identifiers collide.
+
+## Caching Behavior
+
+The interaction between `cached` and `identifier` determines when an `Async` menu element is reloaded:
+
+| `cached` | `identifier` | Behavior                                                                                                                                                                                                   |
+| -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `false`  | `nil` or set | The element reloads **every time** it is shown or refreshed. Nothing is stored in the cache.                                                                                                               |
+| `true`   | `nil`        | The element is cached only for the current menu lifecycle. It won’t reload when the menu is reopened **without modifications**, but will reload on explicit refresh.                                       |
+| `true`   | non-`nil`    | The element persists in the cache across menu lifecycles. It will **not reload on refresh**. To reload, you must explicitly remove it from the cache (e.g. via `AsyncStorage.cleanCache(forIdentifier:)`). |
+
+#### Managing the Async Cache (AsyncStorage)
 
 When `cached == true` and an `identifier` is provided, the result is stored in a global cache to avoid re-fetching. You can manage this cache statically:
 
   * **Set Cache Size**: Adjust the maximum number of items in the cache (LRU policy).
     ```swift
-    Async.asyncCacheMaxSize = 50 // Default is no limit
+    AsyncStorage.AsyncCacheMaxSize = 50 // Default is no limit
     ```
   * **Clear by Identifier**: Manually remove a specific cached element.
     ```swift
     // Returns true if an element was removed
-    let didClean = Async.cleanCache(forIdentifier: "user-list")
+    let didClean = AsyncStorage.cleanCache(forIdentifier: "user-list")
     ```
   * **Clear by Condition**: Remove all cached elements that satisfy a condition.
     ```swift
-    Async.cleanCache { identifier, element in
+    AsyncStorage.cleanCache { identifier in
         // e.g., clean all caches representing elements with users
         return (identifier as? String)?.hasPrefix("user-") ?? false
     }
@@ -248,7 +311,7 @@ func makeMenu() -> UIMenu {
 public init(
     @BUIMenuBuilder body: @escaping () -> UIMenu,
     previewProvider: UIContextMenuContentPreviewProvider? = nil,
-    delegate: Delegate? = nil
+    delegate: BetterUIContextMenuInteractionDelegate? = nil
 )
 ```
 
@@ -288,29 +351,34 @@ let delegate = CustomDelegate(
 let myInteraction = BetterContextMenuInteraction(body: makeMenu, delegate: delegate)
 ```
 
------
+### Reloading Menus
+Use `reloadMenu(withIdentifier:)` to target a specific submenu for refresh:
+```swift
+ctx?.reloadMenu(withIdentifier: "stepper-menu")
+```
+If you call `reloadMenu()` without specifying an identifier, it will update the root menu. However, if a submenu is currently open, that submenu won't reflect the changes until it is closed and reopened again. This is because the update applies to the visible menus based on UIKit's menu presentation behavior.
 
-## API Reference (summary)
+---
 
-> All types require iOS 16.0+
+# API Reference (summary)
 
-  * `@resultBuilder public struct BUIMenuBuilder`
-    Build a `UIMenu` from declarative elements.
-  * `protocol MenuBuilderElement`
-    Conformance bridge to `UIMenuElement`. **`UIMenu` and `UIAction` conform by default**, so you can use them directly in the builder.
-  * `struct Menu`: A grouped `UIMenu` node with a `@BUIMenuBuilder` body.
-  * `struct Button`: Builds a `UIAction`.
-  * `struct Toggle`: Builds a stateful `UIAction` (on/off).
-  * `struct ForEach<T>`: Maps collections to menu children.
-  * `struct Text`: A simple, inert text row.
-  * `struct Stepper<T: Strideable>`: Inline menu with increment/decrement buttons.
-  * `struct Section`: Inline submenu with a title.
-  * `struct ControlGroup`: Groups controls with a `.medium` preferred element size.
-  * `struct Async<Result>`: `UIDeferredMenuElement` builder with configurable caching.
-  * `struct Divider`: A visual separator.
-  * `class BetterContextMenuInteraction: UIContextMenuInteraction`: Context menu interaction that uses a builder `body`, supports `reloadMenu()`, and allows for delegate customization.
+**All types require iOS 16.0+**
 
------
+| Type                                                           | Description                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@resultBuilder public struct BUIMenuBuilder`                  | Build a `UIMenu` from declarative elements.                                                                                                                                                                                                                                                                                                           |
+| `protocol MenuBuilderElement`                                  | Conformance bridge to `UIMenuElement`. `UIMenu` and `UIAction` conform by default, so you can use them directly in the builder.                                                                                                                                                                                                                       |
+| `struct Menu`                                                  | A grouped `UIMenu` node with a `@BUIMenuBuilder` body.                                                                                                                                                                                                                                                                                                |
+| `struct Button`                                                | Builds a `UIAction`.                                                                                                                                                                                                                                                                                                                                  |
+| `struct Toggle`                                                | Builds a stateful `UIAction` (on/off).                                                                                                                                                                                                                                                                                                                |
+| `struct ForEach<T>`                                            | Maps collections to menu children.                                                                                                                                                                                                                                                                                                                    |
+| `struct Text`                                                  | A simple, inert text row.                                                                                                                                                                                                                                                                                                                             |
+| `struct Stepper<T: Strideable>`                                | Inline menu with increment/decrement buttons.                                                                                                                                                                                                                                                                                                         |
+| `struct Section`                                               | Inline submenu with a title.                                                                                                                                                                                                                                                                                                                          |
+| `struct ControlGroup`                                          | Groups controls with a `.medium` preferred element size.                                                                                                                                                                                                                                                                                              |
+| `struct Async<Result>`                                         | UIDeferredMenuElement builder with configurable caching: <br>• `.cached(true/false)` – store menu or result.<br>• `.identifier(key)` – persist cache across menu lifecycles.<br>• `.calculateBodyWithCache(true/false)` – cache raw `Result` or rendered menu.<br>• Use `AsyncStorage.modifyCache(forIdentifier:_:)` to safely mutate cached results. |
+| `struct Divider`                                               | A visual separator.                                                                                                                                                                                                                                                                                                                                   |
+| `class BetterContextMenuInteraction: UIContextMenuInteraction` | Context menu interaction using a builder body. <br>• Supports `reloadMenu()` to refresh menus after data changes.<br>• Customizable delegate via `BetterUIContextMenuInteractionDelegate`.<br>• Optional `previewProvider` for previews.                                                                                                              |
 
 ## Practical example: state updates
 
@@ -349,7 +417,6 @@ final class MyViewController: UIViewController {
 
   * The builder produces standard `UIMenu`/`UIMenuElement` instances - all UIKit rendering rules and behaviors still apply.
   * Stateful elements like `Toggle` and `Stepper` **do not** persist state automatically. You must manage the state in your model and call `reloadMenu()` to reflect changes.
-  * The `Async` cache is a global, static resource. Its size and contents can be managed via the static properties and methods on the `Async` type.
   * The package targets iOS 16+ because it relies on modern menu APIs. Some appearance defaults may change on iOS 17+ (e.g., `preferredElementSize` uses `.automatic`).
   * When using a `Toggle`, you might encounter a weird UI behavior where the menu gets translated to the right or left after tapping the toggle (this happens when a checkmark is shown or dismissed). This is a known UIKit behavior.
 

@@ -27,7 +27,7 @@ public enum BUIMenuBuilder {
     /// - Parameter components: The list of elements produced by the builder.
     /// - Returns: A constructed `UIMenu` representing the composed menu hierarchy.
     public static func buildArray(_ components: [MenuBuilderElement]) -> UIMenu {
-        let mainMenu: UIMenuInfo = UIMenuInfo(image: UIImage(systemName: "cube") ,options: .displayInline)
+        let mainMenu: UIMenuInfo = UIMenuInfo(image: UIImage(systemName: "cube"), options: .displayInline)
         var grandParentsQueue: [UIMenuInfo] = []
         var currentParent: UIMenuInfo = mainMenu
         for component in components {
@@ -131,6 +131,19 @@ extension UIMenu {
     /// This is useful for reusing or composing existing menus within the builder pipeline.
     var uiMenuInfo: BUIMenuBuilder.UIMenuInfo {
         return BUIMenuBuilder.UIMenuInfo(title: title, subtitle: subtitle, image: image, identifier: identifier, options: options, preferredElementSize: preferredElementSize, children: children)
+    }
+    
+    public func findChildren(withIdentifier identifier: UIMenu.Identifier) -> UIMenu? {
+        if self.identifier == identifier {
+            return self
+        } else {
+            for child in children.compactMap { $0 as? UIMenu } {
+                if let menu = child.findChildren(withIdentifier: identifier) {
+                    return menu
+                }
+            }
+            return nil
+        }
     }
 }
 
@@ -301,19 +314,19 @@ public struct Menu: MenuBuilderElement {
     /// Optional image for the menu.
     public let image: UIImage?
     
-    /// Optional identifier for the menu.
-    public let identifier: UIMenu.Identifier?
+    /// Optional identifier for the menu.  Can be used to refresh the menu only.
+    public var identifier: UIMenu.Identifier? = nil
     
     /// Options that affect presentation and behavior.
-    public let options: UIMenu.Options
+    public var options: UIMenu.Options = []
     
     /// Preferred element size for children.
-    public let preferredElementSize: UIMenu.ElementSize
+    public var preferredElementSize: UIMenu.ElementSize = { if #available(iOS 17.0, tvOS 17.0, watchOS 10.0, *) { .automatic } else { .large } }()
     
     /// The body closure producing nested menu content. Annotated with ``BetterMenus/BUIMenuBuilder``.
     @BUIMenuBuilder public let body: () -> UIMenu
     
-    /// Create a new `BetterMenus/Menu` node.
+    /// Create a new ``BetterMenus/Menu`` node.
     ///
     /// - Parameters:
     ///   - title: The menu title.
@@ -323,6 +336,7 @@ public struct Menu: MenuBuilderElement {
     ///   - options: Menu options.
     ///   - preferredElementSize: Preferred element size for children.
     ///   - body: A `@BUIMenuBuilder` closure that constructs the menu's children.
+    @available(*, deprecated, message: "Use init(_ title: String, subtitle: String?, image: UIImage?, @BUIMenuBuilder body: @escaping () -> UIMenu) and the inline modifiers instead. This method will be removed in a future version of BetterMenus.")
     public init(_ title: String = "", subtitle: String? = nil, image: UIImage? = nil, identifier: UIMenu.Identifier? = nil, options: UIMenu.Options = [], preferredElementSize: UIMenu.ElementSize = { if #available(iOS 17.0, tvOS 17.0, watchOS 10.0, *) { .automatic } else { .large } }(), @BUIMenuBuilder body: @escaping () -> UIMenu) {
         self.title = title
         self.subtitle = subtitle
@@ -331,6 +345,44 @@ public struct Menu: MenuBuilderElement {
         self.options = options
         self.preferredElementSize = preferredElementSize
         self.body = body
+    }
+    
+    /// Create a new ``BetterMenus/Menu`` node.
+    ///
+    /// - Parameters:
+    ///   - title: The menu title.
+    ///   - subtitle: Optional subtitle.
+    ///   - image: Optional icon.
+    ///   - body: A `@BUIMenuBuilder` closure that constructs the menu's children.
+    public init(_ title: String = "", subtitle: String? = nil, image: UIImage? = nil, @BUIMenuBuilder body: @escaping () -> UIMenu) {
+        self.title = title
+        self.subtitle = subtitle
+        self.image = image
+        self.body = body
+    }
+    
+    public func identifier(_ identifier: UIMenu.Identifier?) -> Self {
+        var copy = self
+        copy.identifier = identifier
+        return copy
+    }
+    
+    public func identifier(_ identifier: String) -> Self {
+        var copy = self
+        copy.identifier = UIMenu.Identifier(rawValue: identifier)
+        return copy
+    }
+    
+    public func options(_ options: UIMenu.Options?) -> Self {
+        var copy = self
+        copy.options = options ?? []
+        return copy
+    }
+    
+    public func preferredElementSize(_ preferredElementSize: UIMenu.ElementSize) -> Self {
+        var copy = self
+        copy.preferredElementSize = preferredElementSize
+        return copy
     }
 }
 
@@ -655,6 +707,9 @@ public struct Section: MenuBuilderElement {
     /// The section title.
     public let title: String
     
+    /// Optional identifier for the section. Can be used to refresh the section only.
+    var identifier: UIMenu.Identifier? = nil
+    
     /// The body closure producing the content of the section.
     @BUIMenuBuilder public let body: () -> UIMenu
     
@@ -662,6 +717,20 @@ public struct Section: MenuBuilderElement {
     public init(_ title: String = "", @BUIMenuBuilder body: @escaping () -> UIMenu) {
         self.title = title
         self.body = body
+    }
+    
+    /// Optional identifier for the section. Can be used to refresh the section only.
+    public func identifier(_ identifier: UIMenu.Identifier?) -> Self {
+        var copy = self
+        copy.identifier = identifier
+        return copy
+    }
+    
+    /// Optional identifier for the section. Can be used to refresh the section only.
+    public func identifier(_ identifier: String) -> Self {
+        var copy = self
+        copy.identifier = UIMenu.Identifier(rawValue: identifier)
+        return copy
     }
 }
 
@@ -696,24 +765,114 @@ public struct ControlGroup: MenuBuilderElement {
 // MARK: - Async support
 
 @available(iOS 16.0, *)
-enum AsyncStorage {
-    static var AsyncCache: OrderedDictionary<AnyHashable, UIDeferredMenuElement> = .init()
-    static var AsyncCacheMaxSize: Int = .max
+public enum AsyncStorage {
+    static var AsyncCache: OrderedDictionary<AnyHashable, CacheType> = .init()
+    static let AsyncStorageQueue = DispatchQueue(label: "bettermenus.async-storage")
+
+    
+    enum CacheType {
+        case uiDeferredElement(UIDeferredMenuElement)
+        case deferredContent(Any)
+    }
+    
+    static func updateValueAndPutOnTop(withIdentifier identifier: AnyHashable, value: CacheType) {
+        AsyncStorageQueue.async {
+            if AsyncCache.keys.contains(identifier) {
+                _ = AsyncCache.removeValue(forKey: identifier)
+            }
+            AsyncCache[identifier] = value
+            AsyncStorage.cleanCacheSurplus()
+        }
+    }
+    
+    static func cleanCacheSurplus() {
+        AsyncStorageQueue.async {
+            if AsyncStorage.AsyncCache.count > AsyncStorage.AsyncCacheMaxSize {
+                AsyncStorage.AsyncCache.removeFirst(AsyncStorage.AsyncCache.count - AsyncStorage.AsyncCacheMaxSize)
+            }
+        }
+    }
+    
+    static func getValue(forIdentifier identifier: AnyHashable) -> CacheType? {
+        return AsyncStorageQueue.sync {
+            return AsyncCache[identifier]
+        }
+    }
+        
+    /// A variable to set the maximum size cache for the cache of async elements.
+    public static var AsyncCacheMaxSize: Int = .max
+    
+    /// A static method to clean the cache for a certain identifier. Returns true if an element was removed from the cache.
+    public static func cleanCache(forIdentifier identifier: AnyHashable) -> Bool {
+        return AsyncStorageQueue.asyncAndWait {
+            return AsyncStorage.AsyncCache.removeValue(forKey: identifier) != nil
+        }
+    }
+
+    /// A static method to clean the cache for identifiers that match a certain condition.
+    public static func cleanCache(where condition: (AnyHashable) -> Bool) {
+        return AsyncStorageQueue.asyncAndWait {
+            return AsyncStorage.AsyncCache.removeAll(where: { element in
+                condition(element.key)
+            })
+        }
+    }
+    
+    /// A method to modify the raw cache of a cache element that comes from an ``Async`` structure where ``Async/calculateBodyWithCache(_:)`` was enabled, ``Async/cached(_:)`` was enabled and the ``Async/identifier(_:)`` was given.
+    /// - Generic: T is the type of element that should be present in the cache for the identifier to give (i.e. the `Result` type of your ``Async`` structure).
+    /// - Returns: a  boolean indicating whether the change took place or not.
+    ///
+    /// Once a result is cached (via `calculateBodyWithCache`), you can modify it at runtime without refetching.
+    ///
+    /// ```swift
+    /// AsyncStorage.modifyCache(forIdentifier: "menu-cache") { (data: [Item]) in
+    ///     var copy = data
+    ///     copy.append(Item(name: "Injected item"))
+    ///     return copy
+    /// }
+    /// ```
+    ///
+    /// * The closure receives the cached value and return a value of type `T` (the same type your `asyncFetch` returns otherwise the modification will be rejected).
+    /// * Returns `true` if the cache was successfully updated, otherwise `false`.
+    ///
+    /// This is useful for:
+    ///
+    /// * Injecting items into the menu without hitting the network again.
+    /// * Adjusting cached data after a background update.
+    /// * Fixing up cached state when identifiers collide.
+    public static func modifyCache<T>(forIdentifier identifier: AnyHashable, _ handler: (T) -> T) -> Bool {
+        if case .deferredContent(var content) = getValue(forIdentifier: identifier) {
+            if let content = content as? T {
+                let updatedContent = handler(content)
+                updateValueAndPutOnTop(withIdentifier: identifier, value: .deferredContent(updatedContent))
+                cleanCacheSurplus()
+                return true
+            } else {
+                print("[BetterMenus] Tried to modify the cache for identifier \(identifier), but the type present in the cache is not the same as the one you specified (given: \(T.self), present in the cache: \(type(of: content))).")
+            }
+        } else {
+            print("[BetterMenus] Tried to modify the cache for identifier \(identifier), but the cache is a menu element and not a custom type of data, use Async.calculateBodyWithCache.")
+        }
+        return false
+    }
 }
 
 /// Create a deferred menu element that will run `asyncFetch` and then render `body(result)`
 /// While `asyncFetch` runs, a loading placeholder with a progressview is shown.
 ///
-/// If `cached` is true and an `identifier` is provided, cached `UIDeferredMenuElement`s are stored
+/// If ``Async/cached(_:)`` is true and an ``Async/identifier(_:)`` is provided, cached `UIDeferredMenuElement`s are stored
 /// in an internal `AsyncCache` to avoid re-fetching identical async data repeatedly.
 ///
 /// Example:
 /// ```swift
-/// Async(cached: true, identifier: "recentFiles", {
-///     return await loadRecentFiles()
-/// }) { files in
-///     ForEach(files) { file in
-///         Button(file.name) { _ in open(file) }
+/// Async {
+///     // This closure runs in an async context
+///     try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+///     return ["Alice", "Bob", "Eve"]
+/// } body: { users in
+///     // This closure builds the menu once the data is fetched
+///     ForEach(users) { user in
+///         Text(user)
 ///     }
 /// }
 /// ```
@@ -723,32 +882,53 @@ public struct Async<Result>: MenuBuilderElement {
         let completionHandler: (@escaping ([UIMenuElement]) -> Void) -> Void = { completion in
             Task {
                 let result = await asyncFetch()
+                
+                // if we cache the result of this fetch instead of the resulting UIMenuElement
+                if let identifier = self.identifier, self.calculateBodyWithCache {
+                    AsyncStorage.updateValueAndPutOnTop(withIdentifier: identifier, value: .deferredContent(result))
+                }
+                
                 DispatchQueue.main.async {
-                    completion(body(result).children)
+                    completion(self.body(result).children)
                 }
             }
         }
                 
         if cached {
-            if let identifier = self.identifier, let element = AsyncStorage.AsyncCache.removeValue(forKey: identifier) {
-                AsyncStorage.AsyncCache[identifier] = element
-                return element
-            } else {
-                let newElement = UIDeferredMenuElement(completionHandler)
-                if let identifier = self.identifier {
-                    AsyncStorage.AsyncCache[identifier] = newElement
-                    if AsyncStorage.AsyncCache.count > AsyncStorage.AsyncCacheMaxSize {
-                        AsyncStorage.AsyncCache.removeFirst(AsyncStorage.AsyncCache.count - AsyncStorage.AsyncCacheMaxSize)
-                    }
-                }
-                return newElement
-            }
+            if let identifier = self.identifier,
+               let element = AsyncStorage.getValue(forIdentifier: identifier) {
+                   AsyncStorage.updateValueAndPutOnTop(withIdentifier: identifier, value: element)
+                   switch element {
+                   case .uiDeferredElement(let uIDeferredMenuElement):
+                       return uIDeferredMenuElement
+                   case .deferredContent(let result as Result):
+                       // we use uncached to make sure that the body is going to be recalculated and be displayed
+                       return UIDeferredMenuElement.uncached { completion in
+                           completion(body(result).children)
+                       }
+                   case .deferredContent(let result):
+                       print("[BetterMenus] The cached result should never be of a different type than the original one. Result:", result, "Expected type:", Result.self)
+                       return UIDeferredMenuElement({ $0([]) })
+                   }
+               } else {
+                   var newElement = UIDeferredMenuElement(completionHandler)
+                   if let identifier = self.identifier {
+                       let newCacheElement: AsyncStorage.CacheType
+                       if self.calculateBodyWithCache {
+                           newElement = UIDeferredMenuElement.uncached(completionHandler) // we cache manually
+                       } else {
+                           AsyncStorage.updateValueAndPutOnTop(withIdentifier: identifier, value: .uiDeferredElement(newElement))
+                       }
+                   }
+                   return newElement
+               }
         } else {
             return UIDeferredMenuElement.uncached(completionHandler)
         }
     }
     
-    /// A variable to set the maximum size cache for the cache of async elements.
+    /// A variable to set the maximum size cache for the cache of async elements
+    @available(*, deprecated, message: "Use AsyncStorage.AsyncCacheMaxSize instead. This variable will be removed in a future version of BetterMenus.")
     public static var asyncCacheMaxSize: Int {
         get {
             return AsyncStorage.AsyncCacheMaxSize
@@ -759,19 +939,34 @@ public struct Async<Result>: MenuBuilderElement {
     }
     
     /// A static method to clean the cache for a certain identifier. Returns true if an element was removed from the cache.
+    @available(*, deprecated, message: "Use AsyncStorage.cleanCache(forIdentifier identifier: AnyHashable) -> Bool instead. This method will be removed in a future version of BetterMenus.")
     public static func cleanCache(forIdentifier identifier: AnyHashable) -> Bool {
-        return AsyncStorage.AsyncCache.removeValue(forKey: identifier) != nil
+        return AsyncStorage.cleanCache(forIdentifier: identifier)
     }
     
     /// A static method to clean the cache for identifiers and elements that match a certain condition.
+    @available(*, deprecated, message: "Use cleanCache(where condition: (AnyHashable) -> Bool) condition instead. This method will be removed in a future version of BetterMenus.") // TODO: make the AsyncCache private when this gets removed
     public static func cleanCache(where condition: (AnyHashable, UIMenuElement) -> Bool) {
-        return AsyncStorage.AsyncCache.removeAll(where: condition)
+        return AsyncStorage.AsyncStorageQueue.asyncAndWait {
+            AsyncStorage.AsyncCache.removeAll(where: { key, element in
+                if case .uiDeferredElement(let deferredElement) = element {
+                    return condition(key, deferredElement)
+                } else {
+                    return condition(key, UIMenu())
+                }
+            })
+        }
     }
     
-    /// When true use an internal cache for deferred elements (when ``identifier`` is set).
+    /// When true, caches the element and reuse in case of menu refresh. You can also set an ``identifier`` to this element for it to be cached even after the menu gets destroyed.
+    @available(*, deprecated, message: "Use cached(_:) instead. This variable will become internal in a future version of BetterMenus.")
     public var cached: Bool = false
     
-    /// Optional key used to cache the deferred menu element, beware that the element will be stored in the cache and no limit to it is set by default, see ``Async/asyncCacheMaxSize``.
+    /// A boolean indicating whether the content of the ``asyncFetch`` query should be cached and be used to recalculate the body or if the body only should be saved (default case). The body is recalculated when a refresh operation takes place.
+    var calculateBodyWithCache: Bool = false
+    
+    /// Optional key used to cache the deferred menu element, beware that the element will be stored in the cache and no limit to it is set by default, see ``Async/asyncCacheMaxSize``. See ``cached``.
+    @available(*, deprecated, message: "Use identifier(_:) instead. This variable will become internal in a future version of BetterMenus.")
     public var identifier: AnyHashable? = nil
 
     /// The asynchronous fetching closure that returns a `Result` used by `body` to build children.
@@ -792,14 +987,48 @@ public struct Async<Result>: MenuBuilderElement {
         self.body = body
     }
     
-    /// Sets a boolean that, when true, use an internal cache for deferred elements (when ``identifier`` is set).
+    /// Sets a boolean that, when true, caches the element and reuse in case of menu refresh. You can also set an ``identifier`` to this element for it to be cached even after the menu gets destroyed.
+    /// | `cached` | `identifier` | Behavior                                                                                                                                                                                                   |
+    /// | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    /// | `false`  | `nil` or set | The element reloads **every time** it is shown or refreshed. Nothing is stored in the cache.                                                                                                               |
+    /// | `true`   | `nil`        | The element is cached only for the current menu lifecycle. It won’t reload when the menu is reopened **without modifications**, but will reload on explicit refresh.                                       |
+    /// | `true`   | non-`nil`    | The element persists in the cache across menu lifecycles. It will **not reload on refresh**. To reload, you must explicitly remove it from the cache (e.g. via ``AsyncStorage/cleanCache(forIdentifier:)``). |
     public func cached(_ cached: Bool) -> Self {
         var copy = self
         copy.cached = cached
         return copy
     }
     
+    /// Sets a boolean indicating whether the content of the ``asyncFetch`` query should be cached and be used to recalculate the body or if the body only should be saved (default case). The body is recalculated when a refresh operation takes place.
+    ///
+    /// By default, an `Async` element caches the **final `UIDeferredMenuElement`** (the rendered menu).
+    /// If you enable `.calculateBodyWithCache(true)`, the cache will instead store the **raw `Result`** produced by your `asyncFetch` closure.
+    /// This allows the menu body to be recalculated later without re-running the async fetch. For example:
+    /// ```swift
+    /// Async {
+    ///     await fetchMenuData()
+    /// } body: { data in
+    ///     UIMenu(title: "Items", children: data.map(makeMenuItem))
+    /// }
+    /// .cached(true)
+    /// .identifier("menu-cache")
+    /// .calculateBodyWithCache(true)
+    /// ```
+    /// * If `calculateBodyWithCache` is **false** (default):
+    ///   The menu is cached as-is, and reused directly on refresh.
+    /// * If `calculateBodyWithCache` is **true**:
+    ///   The `fetchMenuData()` result is cached, and the `body` builder will be called again when the menu refreshes.
+    /// - Note: Refreshing the menu is not automatic. You must call `reloadMenu()` explicitly on your `BetterContextMenuInteraction` (or a custom `UIContextMenuInteraction`) to trigger the rebuild.
+    public func calculateBodyWithCache(_ calculateBodyWithCache: Bool) -> Self {
+        var copy = self
+        copy.calculateBodyWithCache = calculateBodyWithCache
+        return copy
+    }
+    
     /// Sets an key used to cache the deferred menu element.
+    ///
+    /// If ``cached(_:)`` is set to true, setting the identifier will make the element persist in the cache across menu lifecycles. It will **not reload on refresh**. To reload, you must explicitly remove it from the cache (e.g. via `AsyncStorage.cleanCache(forIdentifier:)`).
+    /// See the table in the documentation of ``cached(_:)`` to know more about the combinations.
     public func identifier(_ identifier: AnyHashable) -> Self {
         var copy = self
         copy.identifier = identifier
@@ -850,16 +1079,55 @@ public class BetterContextMenuInteraction: UIContextMenuInteraction {
     }
     
     private var _delegate: BetterUIContextMenuInteractionDelegate
-        
-    /// Update the currently visible menu by calling the `body` builder and replacing the menu.
+    
+    /// Update the currently visible menu by calling the `body` builder and replacing the whole menu or just the one with the specified identifier.
     ///
-    /// Call `reloadMenu()` when your underlying application state changes and you want
-    /// the presented context menu to reflect new data (for example after toggling an item).
-    public func reloadMenu() {
-        self.updateVisibleMenu({ menu in
+    /// If you call `reloadMenu()` without specifying an identifier, it will update the root menu. However, if a submenu is currently open, that submenu won't reflect the changes until it is closed and reopened again. This is because the update applies to the visible menus based on UIKit's menu presentation behavior.
+    public func reloadMenu(withIdentifier identifier: String) {
+        return reloadMenu(withIdentifier: UIMenu.Identifier(rawValue: identifier))
+    }
+
+    /// Update the currently visible menu by calling the `body` builder and replacing the whole menu or just the one with the specified identifier.
+    ///
+    /// If you call `reloadMenu()` without specifying an identifier, it will update the root menu. However, if a submenu is currently open, that submenu won't reflect the changes until it is closed and reopened again. This is because the update applies to the visible menus based on UIKit's menu presentation behavior.
+    public func reloadMenu(withIdentifier identifier: UIMenu.Identifier? = nil) {
+        
+        // documentation from UIKit
+        /**
+         * @abstract Call to update the currently visible menu. This method does nothing if called before a menu is presented.
+         *
+         * @param block  Called with a mutable copy of the currently visible menu. Modify and return this menu (or an entirely
+         *               new one) to change the currently visible menu items. Starting in iOS 15, this block is called once for
+         *               every visible submenu. For example, in the following hierarchy:
+         *
+         *               *- Root Menu
+         *                  *- Submenu A
+         *                     *- Submenu B
+         *                  *- Submenu C
+         *
+         *               If Submenu A is visible, the block is called twice (once for the Root Menu and once for Submenu A).
+         *               If both A and B are visible, it's called 3 times (for the Root Menu, A, and B).
+         */
+        DispatchQueue.main.async {
+            var didUpdateRoot: Bool = false
             self.currentMenu = self.body()
-            return self.currentMenu
-        })
+            self.updateVisibleMenu { menu in
+                if let identifier = identifier {
+                    if menu.identifier == identifier {
+                        if let menuToReplace = self.currentMenu.findChildren(withIdentifier: identifier) {
+                            return menuToReplace
+                        } else {
+                            print("[BetterMenus] Didn't find menu with identifier \(identifier) in the result of body(). Not replacing current menu.")
+                        }
+                    }
+                    return menu
+                } else {
+                    guard !didUpdateRoot else { return UIMenu() }
+                    didUpdateRoot = true
+                    return self.currentMenu
+                }
+            }
+        }
     }
     
     /// Create a context menu interaction backed by a `@BUIMenuBuilder` body that can be reloaded.
